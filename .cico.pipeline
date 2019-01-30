@@ -65,12 +65,13 @@ node('odo') {
           stage('End2End Test') {
               onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
               cd ${CLONE_DIR} &&
+              make &&
+              cp odo /usr/local/go/bin &&
               git checkout cico-test && 
               rpm --query centos-release &&
               echo "----------starting-----------" &&
               ./scripts/minishift-remote.sh &&
               echo "----------finished-----------" &&
-              make install &&
               odo version &&
               make test-main-e2e
               '''
