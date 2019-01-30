@@ -41,7 +41,7 @@ node('odo') {
             cd  ${CLONE_DIR} && ls -la'''
         }
 
-/*        stage('Build binary') {
+    stage('Build binary') {
             onmyduffynode '''export PATH=$PATH:/usr/local/go/bin:/root/go/bin &&
             go version &&
             cd ${CLONE_DIR} && 
@@ -51,16 +51,17 @@ node('odo') {
             tar -cvzf odo-linux-amd64.tar.gz -C dist/bin/linux-amd64 . &&
             tar -cvzf odo-linux-arm.tar.gz -C dist/bin/linux-arm . &&
             tar -cvzf odo-darwin-amd64.tar.gz -C dist/bin/darwin-amd64 . &&
-            tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 .
+            tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 . &&
+            pwd && ls -la
             '''
-        }
+    }
 
-        stage('Unit Test') {
+    stage('Unit Test') {
             onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
             cd ${CLONE_DIR} &&
             make test |& tee unit_test.log'''
-        }
-*/
+    }
+
         timeout(20) {
           stage('End2End Test') {
               onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
@@ -73,7 +74,8 @@ node('odo') {
               ./scripts/minishift-remote.sh &&
               echo "----------finished-----------" &&
               odo version &&
-              make test-main-e2e
+              make test-main-e2e &&
+              pwd && ls -la
               '''
           }
         }
