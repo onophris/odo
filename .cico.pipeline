@@ -41,45 +41,42 @@ node('odo') {
             cd  ${CLONE_DIR} && ls -la'''
         }
 
-    stage('Build binary') {
-            onmyduffynode '''export PATH=$PATH:/usr/local/go/bin:/root/go/bin &&
-            go version &&
-            cd ${CLONE_DIR} && 
-            pwd &&
-            make goget-tools &&
-            make cross &&
-            tar -cvzf odo-linux-amd64.tar.gz -C dist/bin/linux-amd64 . &&
-            tar -cvzf odo-linux-arm.tar.gz -C dist/bin/linux-arm . &&
-            tar -cvzf odo-darwin-amd64.tar.gz -C dist/bin/darwin-amd64 . &&
-            tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 . &&
-            pwd && ls -la
-            '''
-    }
-
-    stage('Unit Test') {
-            onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
-            cd ${CLONE_DIR} &&
-            make test |& tee unit_test.log'''
-    }
-
-        timeout(20) {
-          stage('End2End Test') {
-              onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
-              cd ${CLONE_DIR} &&
-              make &&
-              cp odo /usr/local/go/bin &&
-              git checkout cico-test && 
-              rpm --query centos-release &&
-              echo "----------starting-----------" &&
-              ./scripts/minishift-remote.sh &&
-              echo "----------finished-----------" &&
-              odo version &&
-              make test-main-e2e &&
-              pwd && ls -la
-              '''
-          }
+        stage('Build binary') {
+                onmyduffynode '''export PATH=$PATH:/usr/local/go/bin:/root/go/bin &&
+                go version &&
+                cd ${CLONE_DIR} && 
+                make goget-tools &&
+                make cross &&
+                tar -cvzf odo-linux-amd64.tar.gz -C dist/bin/linux-amd64 . &&
+                tar -cvzf odo-linux-arm.tar.gz -C dist/bin/linux-arm . &&
+                tar -cvzf odo-darwin-amd64.tar.gz -C dist/bin/darwin-amd64 . &&
+                tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 . &&
+                ls -la
+                '''
         }
 
+        stage('Unit Test') {
+                onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                cd ${CLONE_DIR} &&
+                make test |& tee unit_test.log'''
+        }
+
+        timeout(20) {
+           stage('Main e2e Test') {
+                  onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                  cd ${CLONE_DIR} &&
+                  make &&
+                  cp odo /usr/local/go/bin &&
+                  git checkout cico-test && 
+                  rpm --query centos-release &&
+                  echo "----------starting-cluster-provision-----------" &&
+                  ./scripts/minishift-remote.sh &&
+                  echo "----------finished-provisioning-cluster-----------" &&
+                  odo version &&
+                  make test-main-e2e
+                  '''
+           }
+        }
 
     }catch (e){
         currentBuild.result = "FAILED"
