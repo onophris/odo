@@ -16,6 +16,29 @@ def notifyBuild(String buildStatus = 'STARTED') {
 }
 
 node('odo') {
+           stage('testing Parallel'){
+                parallel {
+                    stage('Branch A') {
+                        agent {
+                            label "for-branch-a"
+                        }
+                        steps {
+                            echo "On Branch A"
+                        }
+                    }
+                    stage('Branch B') {
+                        agent {
+                            label "for-branch-b"
+                        }
+                        steps {
+                            echo "On Branch B"
+                        }
+                    }
+                }
+            }
+
+
+
             stage('Allocate Node'){
                 env.CICO_API_KEY = readFile("${env.HOME}/duffy.key").trim()
                 duffy_rtn=sh(
