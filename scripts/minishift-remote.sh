@@ -6,8 +6,11 @@ MINISHIFT_ARCHIVE_URL=${MINISHIFT_ARCHIVE_URL:-'https://github.com/minishift/min
 ssh-keygen -t rsa -N "" -f ~/.ssh/id_minishift_rsa
 ls ~/.ssh/
 
+sudo systemctl stop docker
 sudo systemctl start docker
 sudo systemctl status docker
+
+sudo systemctl stop firewalld
 sudo systemctl start firewalld
 sudo systemctl status firewalld
 ssh-keyscan localhost >> ~/.ssh/known_hosts

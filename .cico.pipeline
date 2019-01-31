@@ -16,29 +16,6 @@ def notifyBuild(String buildStatus = 'STARTED') {
 }
 
 node('odo') {
-           stage('testing Parallel'){
-                parallel {
-                    stage('Branch A') {
-                        agent {
-                            label "for-branch-a"
-                        }
-                        steps {
-                            echo "On Branch A"
-                        }
-                    }
-                    stage('Branch B') {
-                        agent {
-                            label "for-branch-b"
-                        }
-                        steps {
-                            echo "On Branch B"
-                        }
-                    }
-                }
-            }
-
-
-
             stage('Allocate Node'){
                 env.CICO_API_KEY = readFile("${env.HOME}/duffy.key").trim()
                 duffy_rtn=sh(
@@ -82,7 +59,79 @@ node('odo') {
                         cd ${CLONE_DIR} &&
                         make test |& tee unit_test.log'''
                 }
-    
+
+                timeout(20) {
+                    stage('Main e2e Test') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make &&
+                        cp odo /usr/local/go/bin &&
+                        git checkout cico-test && 
+                        rpm --query centos-release &&
+                        echo "----------starting-cluster-provision-----------" &&
+                        ./scripts/minishift-remote.sh &&
+                        echo "----------finished-provisioning-cluster-----------" &&
+                        odo version &&
+                        make test-main-e2e &&
+                        minishift delete -f 
+                        '''
+                    }
+                }
+
+                timeout(20) {
+                    stage('Java e2e tests') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make &&
+                        cp odo /usr/local/go/bin &&
+                        git checkout cico-test && 
+                        rpm --query centos-release &&
+                        echo "----------starting-cluster-provision-----------" &&
+                        ./scripts/minishift-remote.sh &&
+                        echo "----------finished-provisioning-cluster-----------" &&
+                        odo version &&
+                        make test-java-e2e &&
+                        minishift delete -f 
+                        '''
+                    }
+                }
+
+                timeout(20) {
+                    stage('Component e2e tests') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make &&
+                        cp odo /usr/local/go/bin &&
+                        git checkout cico-test && 
+                        rpm --query centos-release &&
+                        echo "----------starting-cluster-provision-----------" &&
+                        ./scripts/minishift-remote.sh &&
+                        echo "----------finished-provisioning-cluster-----------" &&
+                        odo version &&
+                        make test-cmp-e2e &&
+                        minishift delete -f 
+                        '''
+                    }
+                }
+
+                timeout(20) {
+                    stage('Service-Catalog e2e tests') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make &&
+                        cp odo /usr/local/go/bin &&
+                        git checkout cico-test && 
+                        rpm --query centos-release &&
+                        echo "----------starting-cluster-provision-----------" &&
+                        ./scripts/minishift-remote.sh service-catalog  &&
+                        echo "----------finished-provisioning-cluster-----------" &&
+                        odo version &&
+                        make test-service-e2e &&
+                        minishift delete -f 
+                        '''
+                    }
+                }
+
                     
             }catch (e){
                 currentBuild.result = "FAILED"
