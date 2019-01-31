@@ -16,91 +16,146 @@ def notifyBuild(String buildStatus = 'STARTED') {
 }
 
 node('odo') {
+    stage('Parallel runs') {
+    
+    parallel {    
+        'pipe one': stage ("Unit tests and Binary Build") {
+            agent {
+                label   "branch 1"
+            }
+            stage('Allocate Node'){
+                env.CICO_API_KEY = readFile("${env.HOME}/duffy.key").trim()
+                duffy_rtn=sh(
+                    script: 'cico --debug node get -f value -c hostname -c comment',
+                    returnStdout: true
+                    ).trim().tokenize(' ')
+                env.DUFFY_NODE=duffy_rtn[0]
+                env.SSID=duffy_rtn[1]
+                env.CLONE_DIR = 'go/src/github.com/redhat-developer/odo'
+            }
+    
+            try{
+                stage('Pre Setup Node'){
+                    onmyduffynode '''yum -y install git wget gcc &&
+                    wget https://dl.google.com/go/go1.11.2.linux-amd64.tar.gz &&
+                    tar -C /usr/local -xzf go1.11.2.linux-amd64.tar.gz'''
+                }
+    
+    
+                stage('git clone Tests') {
+                    onmyduffynode '''git clone "https://github.com/redhat-developer/odo.git" ${CLONE_DIR} && 
+                    cd  ${CLONE_DIR} && ls -la'''
+                }
+    
+                stage('Build binary') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin:/root/go/bin &&
+                        go version &&
+                        cd ${CLONE_DIR} && 
+                        make goget-tools &&
+                        make cross &&
+                        tar -cvzf odo-linux-amd64.tar.gz -C dist/bin/linux-amd64 . &&
+                        tar -cvzf odo-linux-arm.tar.gz -C dist/bin/linux-arm . &&
+                        tar -cvzf odo-darwin-amd64.tar.gz -C dist/bin/darwin-amd64 . &&
+                        tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 . &&
+                        ls -la
+                        '''
+                }
+    
+                stage('Unit Test') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make test |& tee unit_test.log'''
+                }
+    
+                    
+            }catch (e){
+                currentBuild.result = "FAILED"
+                throw e 
+            } finally {
+                try {
+                    stage('Archive the Logs and binary'){
+                        syncfromduffynode('${CLONE_DIR}/*.log')
+                        syncfromduffynode('${CLONE_DIR}/odo')
+                    }
+                    stage('Archive Artifacts'){
+                        archiveArtifacts artifacts: 'go/src/github.com/redhat-developer/odo/*.log'
+                        archiveArtifacts artifacts: 'go/src/github.com/redhat-developer/odo/*.tar.gz'
+                    }
+                } catch (e){
+                    currentBuild.result = "FAILED"
+                    throw e
+                } finally {
+                    stage('Deallocate Node'){
+                        sh 'cico node done ${SSID}'
+                    }
+                    stage('Notify Recipients'){
+                        notifyBuild(currentBuild.result)
+                    }
+                }
+            }
+        },
+        'pipe two': stage('e2e test') { 
+            agent {
+                label "branch 2"
+            }
 
-    stage('Allocate Node'){
-        env.CICO_API_KEY = readFile("${env.HOME}/duffy.key").trim()
-        duffy_rtn=sh(
-            script: 'cico --debug node get -f value -c hostname -c comment',
-            returnStdout: true
-            ).trim().tokenize(' ')
-        env.DUFFY_NODE=duffy_rtn[0]
-        env.SSID=duffy_rtn[1]
-        env.CLONE_DIR = 'go/src/github.com/redhat-developer/odo'
+            stage('Allocate Node'){
+                env.CICO_API_KEY = readFile("${env.HOME}/duffy.key").trim()
+                duffy_rtn=sh(
+                    script: 'cico --debug node get -f value -c hostname -c comment',
+                    returnStdout: true
+                    ).trim().tokenize(' ')
+                env.DUFFY_NODE=duffy_rtn[0]
+                env.SSIDE2E=duffy_rtn[1]
+                env.CLONE_DIR = 'go/src/github.com/redhat-developer/odo'
+            }
+    
+            try{
+                stage('Pre Setup Node'){
+                    onmyduffynode '''yum -y install git wget gcc docker &&
+                    wget https://dl.google.com/go/go1.11.2.linux-amd64.tar.gz &&
+                    tar -C /usr/local -xzf go1.11.2.linux-amd64.tar.gz'''
+                }
+    
+    
+                stage('git clone Tests') {
+                    onmyduffynode '''git clone "https://github.com/redhat-developer/odo.git" ${CLONE_DIR} && 
+                    cd  ${CLONE_DIR} && ls -la'''
+                }
+
+                timeout(20) {
+                    stage('Main e2e Test') {
+                        onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
+                        cd ${CLONE_DIR} &&
+                        make &&
+                        cp odo /usr/local/go/bin &&
+                        git checkout cico-test && 
+                        rpm --query centos-release &&
+                        echo "----------starting-cluster-provision-----------" &&
+                        ./scripts/minishift-remote.sh &&
+                        echo "----------finished-provisioning-cluster-----------" &&
+                        odo version &&
+                        make test-java-e2e
+                        '''
+                    }
+                }
+
+            }catch (e){
+                currentBuild.result = "FAILED"
+                throw e 
+            } finally {
+                stage('Deallocate Node'){
+                    sh 'cico node done ${SSIDE2E}'
+                }
+                stage('Notify Recipients'){
+                    notifyBuild(currentBuild.result)
+                }
+                
+            }
+
+        }
+
+    }
     }
 
-    try{
-        stage('Pre Setup Node'){
-            onmyduffynode '''yum -y install git wget gcc docker &&
-            wget https://dl.google.com/go/go1.11.2.linux-amd64.tar.gz &&
-            tar -C /usr/local -xzf go1.11.2.linux-amd64.tar.gz'''
-        }
-
-
-        stage('git clone Tests') {
-            onmyduffynode '''git clone "https://github.com/redhat-developer/odo.git" ${CLONE_DIR} && 
-            cd  ${CLONE_DIR} && ls -la'''
-        }
-
-        stage('Build binary') {
-                onmyduffynode '''export PATH=$PATH:/usr/local/go/bin:/root/go/bin &&
-                go version &&
-                cd ${CLONE_DIR} && 
-                make goget-tools &&
-                make cross &&
-                tar -cvzf odo-linux-amd64.tar.gz -C dist/bin/linux-amd64 . &&
-                tar -cvzf odo-linux-arm.tar.gz -C dist/bin/linux-arm . &&
-                tar -cvzf odo-darwin-amd64.tar.gz -C dist/bin/darwin-amd64 . &&
-                tar -cvzf odo-windows-amd64.tar.gz -C dist/bin/windows-amd64 . &&
-                ls -la
-                '''
-        }
-
-        stage('Unit Test') {
-                onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
-                cd ${CLONE_DIR} &&
-                make test |& tee unit_test.log'''
-        }
-
-        timeout(20) {
-           stage('Main e2e Test') {
-                  onmyduffynode '''export PATH=$PATH:/usr/local/go/bin &&
-                  cd ${CLONE_DIR} &&
-                  make &&
-                  cp odo /usr/local/go/bin &&
-                  git checkout cico-test && 
-                  rpm --query centos-release &&
-                  echo "----------starting-cluster-provision-----------" &&
-                  ./scripts/minishift-remote.sh &&
-                  echo "----------finished-provisioning-cluster-----------" &&
-                  odo version &&
-                  make test-main-e2e
-                  '''
-           }
-        }
-
-    }catch (e){
-        currentBuild.result = "FAILED"
-        throw e 
-    } finally {
-        try {
-            stage('Archive the Logs and binary'){
-                syncfromduffynode('${CLONE_DIR}/*.log')
-                syncfromduffynode('${CLONE_DIR}/odo')
-            }
-            stage('Archive Artifacts'){
-                archiveArtifacts artifacts: 'go/src/github.com/redhat-developer/odo/*.log'
-                archiveArtifacts artifacts: 'go/src/github.com/redhat-developer/odo/*.tar.gz'
-            }
-        } catch (e){
-            currentBuild.result = "FAILED"
-            throw e
-        } finally {
-            stage('Deallocate Node'){
-                sh 'cico node done ${SSID}'
-            }
-            stage('Notify Recipients'){
-                notifyBuild(currentBuild.result)
-            }
-        }
-    }
 }
